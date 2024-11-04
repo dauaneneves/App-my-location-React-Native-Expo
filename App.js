@@ -10,69 +10,72 @@ import {
   MD3LightTheme as DefaultTheme,
 } from "react-native-paper";
 import myColors from "./assets/colors.json";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import myColorsDark from "./assets/colorsDark.json";
+import { getAllLocations, insertLocation } from "./src/services/db";
+import * as Location from "expo-location";
 
 export default function App() {
   const [isSwitchOn, setIsSwitchOn] = useState(false); // variável para controle do darkMode
   const [isLoading, setIsLoading] = useState(false); // variável para controle do loading do button
   const [locations, setLocations] = useState(null); // variável para armazenar as localizações
 
-  // Carrega tema default da lib RN PAPER com customização das cores. Para customizar o tema, veja:
-  // https://callstack.github.io/react-native-paper/docs/guides/theming/#creating-dynamic-theme-colors
   const [theme, setTheme] = useState({
     ...DefaultTheme,
     myOwnProperty: true,
     colors: myColors.colors,
   });
 
-  // load darkMode from AsyncStorage
-  async function loadDarkMode() {}
-
-  // darkMode switch event
-  async function onToggleSwitch() {
-    setIsSwitchOn(!isSwitchOn);
+  async function loadDarkMode() {
+    try {
+      const value = await AsyncStorage.getItem("darkMode");
+      if (value !== null) {
+        setIsSwitchOn(JSON.parse(value));
+      }
+    } catch (e) {
+      console.error("Failed to load dark mode setting.", e);
+    }
   }
 
-  // get location (bottao capturar localização)
+  async function onToggleSwitch() {
+    const newValue = !isSwitchOn;
+    setIsSwitchOn(newValue);
+    try {
+      await AsyncStorage.setItem("darkMode", JSON.stringify(newValue));
+    } catch (e) {
+      console.error("Failed to save dark mode setting.", e);
+    }
+  }
+
   async function getLocation() {
     setIsLoading(true);
 
-    // Localização fake, substituir por localização real do dispositivo
-    const coords = {
-      latitude: -23.5505199,
-      longitude: -46.6333094,
-    };
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      console.error("Permission to access location was denied");
+      return;
+    }
+
+    let location = await Location.getCurrentPositionAsync({});
+    const { latitude, longitude } = location.coords;
+    insertLocation({ latitude, longitude });
+    loadLocations();
 
     setIsLoading(false);
   }
 
-  // load locations from db sqlite - faz a leitura das localizações salvas no banco de dados
   async function loadLocations() {
     setIsLoading(true);
 
-    // generate fake locations
-    const locations = [];
-    for (let i = 0; i < 5; i++) {
-      locations.push({
-        id: i,
-        latitude: -23.5505199 + i,
-        longitude: -46.6333094 + i,
-      });
-    }
-
-    setLocations(locations);
+    setLocations(await getAllLocations());
     setIsLoading(false);
   }
 
-  // Use Effect para carregar o darkMode e as localizações salvas no banco de dados
-  // É executado apenas uma vez, quando o componente é montado
   useEffect(() => {
     loadDarkMode();
     loadLocations();
   }, []);
 
-  // Efetiva a alteração do tema dark/light quando a variável isSwitchOn é alterada
-  // É executado sempre que a variável isSwitchOn é alterada
   useEffect(() => {
     if (isSwitchOn) {
       setTheme({ ...theme, colors: myColorsDark.colors });
